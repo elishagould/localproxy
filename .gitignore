@@ -1,0 +1,77 @@
+# .NET build folders
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# Build results
+*.dll
+*.exe
+*.app
+*.log
+*.vspscc
+*.vssscc
+*.pdb
+*.cache
+*.dbmdl
+*.dbmdl
+*.bak
+*.backup
+*.log
+*.vs/
+
+# NuGet
+*.nupkg
+# The packages folder can be ignored because of Package Restore
+**/packages/*
+# except build/, which is used as an MSBuild target.
+!**/packages/build/
+
+# Others
+*.TestResults/
+TestResults/
+*.publishsettings
+*.publish.xml
+*.orig
+*.sdf
+*.cachefile
+*.dbmdl
+*.jfm
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Rider
+.idea/
+*.sln.iml
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Local history for Visual Studio
+.localhistory/
+
+# Windows image file caches
+*.jfif
+*.jpe
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.tiff
+*.tif
+*.ico
+*.bmp
+*.dib
+*.rle
+
+# Windows shortcuts
+*.lnk
