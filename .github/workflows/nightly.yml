@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,23 +29,24 @@ jobs:
       - name: Get last nightly commit
         id: lastnightly
         run: |
-          gh release list --limit 5 | grep nightly | head -n 1 | awk '{print $3}' > lastnightly_commit.txt || echo '' > lastnightly_commit.txt
-          echo "commit=$(cat lastnightly_commit.txt)" >> $GITHUB_OUTPUT
+          gh release list --limit 5 | findstr nightly | more +1 | for /f "tokens=3" %%a in ('more +1') do @echo %%a > lastnightly_commit.txt || echo. > lastnightly_commit.txt
+          echo commit=$(type lastnightly_commit.txt) >> %GITHUB_OUTPUT%
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get current commit
         id: currentcommit
-        run: echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+        run: echo commit=$(git rev-parse HEAD) >> %GITHUB_OUTPUT%
 
       - name: Check for changes since last nightly
         id: checkchanges
         run: |
-          if [ "${{ steps.lastnightly.outputs.commit }}" = "${{ steps.currentcommit.outputs.commit }}" ]; then
-            echo "No changes since last nightly. Skipping release."
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
+          if "%{{ steps.lastnightly.outputs.commit }}%" == "%{{ steps.currentcommit.outputs.commit }}%" (
+            echo No changes since last nightly. Skipping release.
+            echo skip=true >> %GITHUB_OUTPUT%
+          ) else (
+            echo skip=false >> %GITHUB_OUTPUT%
+          )
 
       - name: Create Nightly Release
         if: steps.checkchanges.outputs.skip == 'false'
@@ -62,6 +63,6 @@ jobs:
       - name: Delete old nightly releases (keep 2)
         if: steps.checkchanges.outputs.skip == 'false'
         run: |
-          gh release list --limit 100 | grep nightly | tail -n +3 | awk '{print $1}' | xargs -r -L1 gh release delete --yes
+          for /f "skip=2 tokens=1" %%r in ('gh release list --limit 100 ^| findstr nightly') do gh release delete %%r --yes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
