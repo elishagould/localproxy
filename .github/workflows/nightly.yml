@@ -30,8 +30,15 @@ jobs:
         id: lastnightly
         shell: cmd
         run: |
-          gh release list --limit 5 --json tagName,targetCommitish --jq ".[] | select(.tagName | test(\"^nightly-\")) | .targetCommitish" > lastnightly_commit.txt
-          if not exist lastnightly_commit.txt (echo. > lastnightly_commit.txt)
+          set NIGHTLY_TAG=
+          for /f %%t in ('gh release list --limit 5 --json tagName --jq ".[] | select(.tagName | test(\"^nightly-\")) | .tagName"') do (
+            if not defined NIGHTLY_TAG set NIGHTLY_TAG=%%t
+          )
+          if not defined NIGHTLY_TAG (
+            echo. > lastnightly_commit.txt
+          ) else (
+            gh release view %NIGHTLY_TAG% --json targetCommitish --jq .targetCommitish > lastnightly_commit.txt
+          )
           set /p commit=<lastnightly_commit.txt
           echo commit=%commit%>> %GITHUB_OUTPUT%
         env:
