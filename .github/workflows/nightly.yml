@@ -82,6 +82,10 @@ jobs:
         shell: cmd
         run: |
           setlocal enabledelayedexpansion
-          for /f "skip=2 tokens=1" %%r in ('gh release list --limit 100 --json tagName --jq ".[].tagName" ^| findstr nightly') do gh release delete %%r --yes
+          gh release list --limit 100 --json tagName --jq ".[].tagName" | findstr nightly > todelete.txt
+          more +2 todelete.txt > todelete2.txt
+          if exist todelete2.txt (
+            for /f %%r in (todelete2.txt) do gh release delete %%r --yes
+          )
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
