@@ -28,24 +28,34 @@ jobs:
 
       - name: Get last nightly commit
         id: lastnightly
+        shell: cmd
         run: |
-          gh release list --limit 5 | findstr nightly | more +1 | for /f "tokens=3" %%a in ('more +1') do @echo %%a > lastnightly_commit.txt || echo. > lastnightly_commit.txt
-          echo commit=$(type lastnightly_commit.txt) >> %GITHUB_OUTPUT%
+          gh release list --limit 5 --json tagName,targetCommitish --jq ".[] | select(.tagName | test(\"^nightly-\")) | .targetCommitish" > lastnightly_commit.txt
+          if not exist lastnightly_commit.txt (echo. > lastnightly_commit.txt)
+          set /p commit=<lastnightly_commit.txt
+          echo commit=%commit%>> %GITHUB_OUTPUT%
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get current commit
         id: currentcommit
-        run: echo commit=$(git rev-parse HEAD) >> %GITHUB_OUTPUT%
+        shell: cmd
+        run: |
+          for /f %%c in ('git rev-parse HEAD') do set commit=%%c
+          echo commit=%commit%>> %GITHUB_OUTPUT%
 
       - name: Check for changes since last nightly
         id: checkchanges
+        shell: cmd
         run: |
-          if "%{{ steps.lastnightly.outputs.commit }}%" == "%{{ steps.currentcommit.outputs.commit }}%" (
+          setlocal enableextensions enabledelayedexpansion
+          set lastnightly_commit=${{ steps.lastnightly.outputs.commit }}
+          set current_commit=${{ steps.currentcommit.outputs.commit }}
+          if /i "!lastnightly_commit!" == "!current_commit!" (
             echo No changes since last nightly. Skipping release.
-            echo skip=true >> %GITHUB_OUTPUT%
+            echo skip=true>> %GITHUB_OUTPUT%
           ) else (
-            echo skip=false >> %GITHUB_OUTPUT%
+            echo skip=false>> %GITHUB_OUTPUT%
           )
 
       - name: Create Nightly Release
@@ -62,7 +72,9 @@ jobs:
 
       - name: Delete old nightly releases (keep 2)
         if: steps.checkchanges.outputs.skip == 'false'
+        shell: cmd
         run: |
-          for /f "skip=2 tokens=1" %%r in ('gh release list --limit 100 ^| findstr nightly') do gh release delete %%r --yes
+          setlocal enabledelayedexpansion
+          for /f "skip=2 tokens=1" %%r in ('gh release list --limit 100 --json tagName --jq ".[].tagName" ^| findstr nightly') do gh release delete %%r --yes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
