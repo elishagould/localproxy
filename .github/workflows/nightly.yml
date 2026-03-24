@@ -1,0 +1,67 @@
+name: Nightly Build
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Runs every day at 2:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish --configuration Release --output ./publish
+
+      - name: Get last nightly commit
+        id: lastnightly
+        run: |
+          gh release list --limit 5 | grep nightly | head -n 1 | awk '{print $3}' > lastnightly_commit.txt || echo '' > lastnightly_commit.txt
+          echo "commit=$(cat lastnightly_commit.txt)" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current commit
+        id: currentcommit
+        run: echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Check for changes since last nightly
+        id: checkchanges
+        run: |
+          if [ "${{ steps.lastnightly.outputs.commit }}" = "${{ steps.currentcommit.outputs.commit }}" ]; then
+            echo "No changes since last nightly. Skipping release."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Create Nightly Release
+        if: steps.checkchanges.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-${{ github.run_id }}
+          name: Nightly Build ${{ github.run_id }}
+          body: 'Automated nightly build.'
+          prerelease: true
+          files: ./publish/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old nightly releases (keep 2)
+        if: steps.checkchanges.outputs.skip == 'false'
+        run: |
+          gh release list --limit 100 | grep nightly | tail -n +3 | awk '{print $1}' | xargs -r -L1 gh release delete --yes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
