@@ -31,7 +31,7 @@ public static class ConnectTunnelHandler
             var shouldBypass = exclusionMatcher.ShouldBypassProxy(host, port);
             
             var targetUri = new Uri($"https://{host}:{port}");
-            var upstreamProxy = WebRequest.DefaultWebProxy?.GetProxy(targetUri);
+            var upstreamProxy = HttpClient.DefaultProxy?.GetProxy(targetUri); ;
             var useUpstreamProxy = upstreamProxy != null && upstreamProxy.Host != host && !shouldBypass;
 
             if (shouldBypass)

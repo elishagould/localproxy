@@ -6,6 +6,9 @@ using Serilog;
 using localproxy;
 using System.Windows.Forms;
 
+Environment.SetEnvironmentVariable("HTTP_PROXY", null);
+Environment.SetEnvironmentVariable("HTTPS_PROXY", null);
+
 // Build configuration
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
@@ -55,21 +58,22 @@ try
         
         using var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<SystemTrayIcon>();
-        
-        // Start the proxy in background
-        _ = host.RunAsync();
-        
+
+        // Create ProxyServer instance for tray mode
+        var proxyServer = new ProxyServer(config, loggerFactory);
+        _ = proxyServer.StartAsync();
+
         // Show balloon tip
-        using var trayIcon = new SystemTrayIcon(config, logger, () => 
+        using var trayIcon = new SystemTrayIcon(config, proxyServer, loggerFactory, logger, () => 
         {
+            proxyServer.Stop();
             Application.Exit();
         });
-        
-        //trayIcon.ShowBalloonTip("Proxy Started", $"Simple Proxy is running on port {config.Proxy.Port}", System.Windows.Forms.ToolTipIcon.Info);
         
         Application.Run();
         
         // Cleanup
+        proxyServer.Stop();
         await host.StopAsync(TimeSpan.FromSeconds(5));
         host.Dispose();
     }

@@ -87,5 +87,6 @@ jobs:
           if exist todelete2.txt (
             for /f %%r in (todelete2.txt) do gh release delete %%r --yes
           )
+          exit /b 0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

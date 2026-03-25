@@ -10,8 +10,44 @@ public class ProxyConfiguration
 public class ProxySettings
 {
     public int Port { get; set; } = 3128;
-    public bool EnableUpstreamProxy { get; set; } = true;
     public int BufferSize { get; set; } = 8192;
+
+    // Default/base configuration
+    public ProxyProfile DefaultProfile { get; set; } = new ProxyProfile
+    {
+        Name = "Default",
+        EnableUpstreamProxy = true,
+        NoProxy = new List<string>()
+    };
+
+    // List of selectable profiles (Default always first)
+    private List<ProxyProfile> _profiles = new List<ProxyProfile>();
+    public List<ProxyProfile> Profiles
+    {
+        get
+        {
+            // Always return DefaultProfile as the first entry
+            var result = new List<ProxyProfile> { DefaultProfile };
+            result.AddRange(_profiles.Where(p => p.Name != DefaultProfile.Name));
+            return result;
+        }
+        set
+        {
+            // Remove any duplicates of DefaultProfile
+            _profiles = value?.Where(p => p.Name != DefaultProfile.Name).ToList() ?? new List<ProxyProfile>();
+        }
+    }
+
+    public string ActiveProfileName { get; set; } = "Default";
+
+    // Helper to get the active profile
+    public ProxyProfile ActiveProfile => Profiles.FirstOrDefault(p => p.Name == ActiveProfileName) ?? DefaultProfile;
+}
+
+public class ProxyProfile
+{
+    public string Name { get; set; } = string.Empty;
+    public bool EnableUpstreamProxy { get; set; } = true;
     public List<string> NoProxy { get; set; } = new();
 }
 

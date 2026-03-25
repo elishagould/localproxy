@@ -17,7 +17,7 @@ public class ProxyServer
     private readonly ProxyConfiguration _config;
     private readonly ILogger<ProxyServer> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly ProxyExclusionMatcher _exclusionMatcher;
+    private ProxyExclusionMatcher _exclusionMatcher;
     private CancellationTokenSource? _cts;
 
     public ProxyServer(ProxyConfiguration config, ILoggerFactory loggerFactory)
@@ -26,24 +26,26 @@ public class ProxyServer
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<ProxyServer>();
         
-        // Initialize exclusion matcher
-        _exclusionMatcher = new ProxyExclusionMatcher(_config.Proxy.NoProxy);
-        if (_config.Proxy.NoProxy.Any())
+        var activeProfile = _config.Proxy.ActiveProfile;
+        // Initialize exclusion matcher with useProxy awareness
+        _exclusionMatcher = new ProxyExclusionMatcher(activeProfile.NoProxy, activeProfile.EnableUpstreamProxy);
+        if (activeProfile.NoProxy.Any())
         {
             _logger.LogInformation("Proxy exclusion list configured with {Count} patterns: {Patterns}", 
-                _config.Proxy.NoProxy.Count, 
-                string.Join(", ", _config.Proxy.NoProxy));
+                activeProfile.NoProxy.Count, 
+                string.Join(", ", activeProfile.NoProxy));
         }
         
         var sysProxy = WebRequest.DefaultWebProxy;
-        if (sysProxy != null)
+        if (activeProfile.EnableUpstreamProxy && sysProxy != null)
         {
             sysProxy.Credentials = CredentialCache.DefaultCredentials;
             _logger.LogInformation("Using system proxy: {Proxy}", sysProxy.GetProxy(new Uri("http://example.com")));
         }
         else
         {
-            _logger.LogInformation("No system proxy configured - direct connections will be used");
+            sysProxy = null;
+            _logger.LogInformation("Upstream proxy is disabled or not configured - direct connections will be used");
         }
 
         var handler = new HttpClientHandler
@@ -92,5 +94,14 @@ public class ProxyServer
         _listener.Stop();
         _httpClient.Dispose();
         _logger.LogInformation("Proxy server stopped");
+    }
+
+    public void RefreshExclusionMatcher()
+    {
+        var activeProfile = _config.Proxy.ActiveProfile;
+        _exclusionMatcher = new ProxyExclusionMatcher(activeProfile.NoProxy, activeProfile.EnableUpstreamProxy);
+        _logger.LogInformation("Proxy exclusion matcher refreshed with {Count} patterns: {Patterns}",
+            activeProfile.NoProxy.Count,
+            string.Join(", ", activeProfile.NoProxy));
     }
 }

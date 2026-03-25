@@ -17,9 +17,11 @@ namespace localproxy;
 public class ProxyExclusionMatcher
 {
     private readonly List<ExclusionRule> _rules;
+    private readonly bool _useProxy;
 
-    public ProxyExclusionMatcher(IEnumerable<string> noProxyList)
+    public ProxyExclusionMatcher(IEnumerable<string> noProxyList, bool useProxy)
     {
+        _useProxy = useProxy;
         _rules = noProxyList
             .Where(pattern => !string.IsNullOrWhiteSpace(pattern))
             .Select(pattern => new ExclusionRule(pattern.Trim()))
@@ -31,6 +33,8 @@ public class ProxyExclusionMatcher
     /// </summary>
     public bool ShouldBypassProxy(string host, int? port = null)
     {
+        if (!_useProxy)
+            return true;
         if (string.IsNullOrWhiteSpace(host))
             return false;
 

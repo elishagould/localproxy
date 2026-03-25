@@ -10,9 +10,15 @@ public class SystemTrayIcon : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly ILogger<SystemTrayIcon> _logger;
     private readonly Action _onExit;
+    private ProxyServer _proxyServer;
+    private readonly ProxyConfiguration _config;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public SystemTrayIcon(ProxyConfiguration config, ILogger<SystemTrayIcon> logger, Action onExit)
+    public SystemTrayIcon(ProxyConfiguration config, ProxyServer proxyServer, ILoggerFactory loggerFactory, ILogger<SystemTrayIcon> logger, Action onExit)
     {
+        _config = config;
+        _proxyServer = proxyServer;
+        _loggerFactory = loggerFactory;
         _logger = logger;
         _onExit = onExit;
 
@@ -33,7 +39,30 @@ public class SystemTrayIcon : IDisposable
         contextMenu.Items.Add(statusItem);
         
         contextMenu.Items.Add(new ToolStripSeparator());
-        
+
+        // Profile selection submenu
+        var profileMenu = new ToolStripMenuItem("Select Proxy Profile");
+        foreach (var profile in config.Proxy.Profiles)
+        {
+            var item = new ToolStripMenuItem(profile.Name)
+            {
+                Checked = profile.Name == config.Proxy.ActiveProfileName
+            };
+            item.Click += async (s, e) => {
+                config.Proxy.ActiveProfileName = profile.Name;
+                foreach (ToolStripMenuItem mi in profileMenu.DropDownItems)
+                    mi.Checked = false;
+                item.Checked = true;
+                _proxyServer.Stop();
+                _proxyServer = new ProxyServer(_config, _loggerFactory);
+                await _proxyServer.StartAsync();
+                ShowBalloonTip("Profile Changed", $"Active profile set to: {profile.Name}", ToolTipIcon.Info);
+            };
+            profileMenu.DropDownItems.Add(item);
+        }
+        contextMenu.Items.Add(profileMenu);
+        contextMenu.Items.Add(new ToolStripSeparator());
+
         // Show Logs
         var showLogsItem = new ToolStripMenuItem("Show Logs")
         {
