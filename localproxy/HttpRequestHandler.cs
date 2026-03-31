@@ -11,7 +11,7 @@ namespace localproxy;
 
 public static class HttpRequestHandler
 {
-    public static async Task HandleHttpRequest(System.Net.Sockets.NetworkStream ns, StreamReader reader, WebHeaderCollection headers, string method, string uriPart, HttpClient httpClient, string clientEndpoint, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher)
+    public static async Task HandleHttpRequest(System.Net.Sockets.NetworkStream ns, StreamReader reader, WebHeaderCollection headers, string method, string uriPart, HttpClient httpClient, string clientEndpoint, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
     {
         var logger = loggerFactory.CreateLogger(typeof(HttpRequestHandler));
         
@@ -31,6 +31,14 @@ public static class HttpRequestHandler
             }
             var scheme = "http";
             requestUri = new Uri($"{scheme}://{host}{uriPart}");
+        }
+
+        // Check if this host is blocked
+        if (blocklistMatcher.ShouldBypassProxy(requestUri.Host, requestUri.Port))
+        {
+            logger.LogWarning("Host {Host}:{Port} is blocked by configuration", requestUri.Host, requestUri.Port);
+            await HttpResponseWriter.WriteBadRequest(ns);
+            return;
         }
 
         // Check if this host should bypass the proxy

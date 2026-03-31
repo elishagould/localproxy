@@ -18,6 +18,7 @@ public class ProxyServer
     private readonly ILogger<ProxyServer> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private ProxyExclusionMatcher _exclusionMatcher;
+    private ProxyExclusionMatcher _blocklistMatcher;
     private CancellationTokenSource? _cts;
 
     public ProxyServer(ProxyConfiguration config, ILoggerFactory loggerFactory)
@@ -36,6 +37,15 @@ public class ProxyServer
                 string.Join(", ", activeProfile.NoProxy));
         }
         
+        // Initialize blocklist matcher
+        _blocklistMatcher = new ProxyExclusionMatcher(activeProfile.BlockedHosts, true);
+        if (activeProfile.BlockedHosts.Any())
+        {
+            _logger.LogInformation("Blocklist configured with {Count} patterns: {Patterns}", 
+                activeProfile.BlockedHosts.Count, 
+                string.Join(", ", activeProfile.BlockedHosts));
+        }
+
         var sysProxy = WebRequest.DefaultWebProxy;
         if (activeProfile.EnableUpstreamProxy && sysProxy != null)
         {
@@ -73,7 +83,7 @@ public class ProxyServer
             while (!_cts.Token.IsCancellationRequested)
             {
                 var client = await _listener.AcceptTcpClientAsync(_cts.Token);
-                _ = ClientHandler.HandleClientAsync(client, _httpClient, _credentialCache, _connectionPool, _config, _loggerFactory, _exclusionMatcher);
+                _ = ClientHandler.HandleClientAsync(client, _httpClient, _credentialCache, _connectionPool, _config, _loggerFactory, _exclusionMatcher, _blocklistMatcher);
             }
         }
         catch (OperationCanceledException)
@@ -103,5 +113,10 @@ public class ProxyServer
         _logger.LogInformation("Proxy exclusion matcher refreshed with {Count} patterns: {Patterns}",
             activeProfile.NoProxy.Count,
             string.Join(", ", activeProfile.NoProxy));
+        
+        _blocklistMatcher = new ProxyExclusionMatcher(activeProfile.BlockedHosts, true);
+        _logger.LogInformation("Blocklist matcher refreshed with {Count} patterns: {Patterns}",
+            activeProfile.BlockedHosts.Count,
+            string.Join(", ", activeProfile.BlockedHosts));
     }
 }

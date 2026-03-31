@@ -49,6 +49,7 @@ public class ProxyProfile
     public string Name { get; set; } = string.Empty;
     public bool EnableUpstreamProxy { get; set; } = true;
     public List<string> NoProxy { get; set; } = new();
+    public List<string> BlockedHosts { get; set; } = new();
 }
 
 public class LoggingSettings

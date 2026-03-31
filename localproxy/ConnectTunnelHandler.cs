@@ -11,7 +11,7 @@ namespace localproxy;
 
 public static class ConnectTunnelHandler
 {
-    public static async Task HandleConnectTunnel(NetworkStream clientStream, string hostPort, HttpClient httpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher)
+    public static async Task HandleConnectTunnel(NetworkStream clientStream, string hostPort, HttpClient httpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
     {
         var logger = loggerFactory.CreateLogger(typeof(ConnectTunnelHandler));
         
@@ -26,6 +26,14 @@ public static class ConnectTunnelHandler
             }
 
             var host = parts[0];
+            
+            // Check if this host is blocked
+            if (blocklistMatcher.ShouldBypassProxy(host, port))
+            {
+                logger.LogWarning("Host {Host}:{Port} is blocked by configuration", host, port);
+                await HttpResponseWriter.WriteBadRequest(clientStream);
+                return;
+            }
             
             // Check if this host should bypass the proxy
             var shouldBypass = exclusionMatcher.ShouldBypassProxy(host, port);
@@ -54,7 +62,7 @@ public static class ConnectTunnelHandler
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "CONNECT tunnel error");
+            logger.LogTrace(ex, "CONNECT tunnel error: {HostPort}", hostPort);
             try
             {
                 await HttpResponseWriter.WriteBadRequest(clientStream);
@@ -65,24 +73,36 @@ public static class ConnectTunnelHandler
 
     private static async Task HandleDirectConnection(NetworkStream clientStream, string host, int port, ProxyConfiguration config, ILogger logger)
     {
-        logger.LogTrace("Direct connection to {Host}:{Port}", host, port);
-        
-        var targetClient = new TcpClient();
-        await targetClient.ConnectAsync(host, port);
-        var targetStream = targetClient.GetStream();
+        try
+        {
+            logger.LogTrace("Direct connection to {Host}:{Port}", host, port);
 
-        var successResponse = Encoding.ASCII.GetBytes("HTTP/1.1 200 Connection Established\r\n\r\n");
-        await clientStream.WriteAsync(successResponse, 0, successResponse.Length);
-        await clientStream.FlushAsync();
+            var targetClient = new TcpClient();
+            await targetClient.ConnectAsync(host, port);
+            var targetStream = targetClient.GetStream();
 
-        logger.LogTrace("Tunnel established to {Host}:{Port} (direct)", host, port);
+            var successResponse = Encoding.ASCII.GetBytes("HTTP/1.1 200 Connection Established\r\n\r\n");
+            await clientStream.WriteAsync(successResponse, 0, successResponse.Length);
+            await clientStream.FlushAsync();
 
-        var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, targetStream, targetClient, config.Proxy.BufferSize);
-        var targetToClient = StreamCopier.CopyStreamAsync(targetStream, clientStream, targetClient, config.Proxy.BufferSize);
+            logger.LogTrace("Tunnel established to {Host}:{Port} (direct)", host, port);
 
-        await Task.WhenAny(clientToTarget, targetToClient);
-        
-        logger.LogTrace("Tunnel closed to {Host}:{Port}", host, port);
-        targetClient.Dispose();
+            var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, targetStream, targetClient, config.Proxy.BufferSize);
+            var targetToClient = StreamCopier.CopyStreamAsync(targetStream, clientStream, targetClient, config.Proxy.BufferSize);
+
+            await Task.WhenAny(clientToTarget, targetToClient);
+
+            logger.LogTrace("Tunnel closed to {Host}:{Port}", host, port);
+            targetClient.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.LogTrace(ex, "Direct connection error to {Host}:{Port}", host, port);
+            try
+            {
+                await HttpResponseWriter.WriteBadRequest(clientStream);
+            }
+            catch { }
+        }
     }
 }
