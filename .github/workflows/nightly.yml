@@ -1,8 +1,9 @@
 name: Nightly Build
 
 on:
-  schedule:
-    - cron: '0 2 * * *' # Runs every day at 2:00 AM UTC
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
