@@ -14,7 +14,7 @@ public static class ClientHandler
 {
     private const int MaxHeaderBytes = 64 * 1024;
 
-    public static async Task HandleClientAsync(TcpClient client, HttpClient httpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
+    public static async Task HandleClientAsync(TcpClient client, HttpClient proxyHttpClient, HttpClient directHttpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
     {
         var logger = loggerFactory.CreateLogger(typeof(ClientHandler));
         var clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
@@ -66,14 +66,14 @@ public static class ClientHandler
                 if (string.Equals(method, "CONNECT", StringComparison.OrdinalIgnoreCase))
                 {
                     logger.LogTrace("CONNECT tunnel to {Target}", uriPart);
-                    await ConnectTunnelHandler.HandleConnectTunnel(ns, uriPart, httpClient, credentialCache, connectionPool, config, loggerFactory, exclusionMatcher, blocklistMatcher);
+                    await ConnectTunnelHandler.HandleConnectTunnel(ns, uriPart, proxyHttpClient, credentialCache, connectionPool, config, loggerFactory, exclusionMatcher, blocklistMatcher);
                     return;
                 }
 
                 using var prefixedStream = new PrefixedStream(ns, bufferedBody);
                 using var reader = new StreamReader(prefixedStream, Encoding.ASCII, leaveOpen: true);
 
-                await HttpRequestHandler.HandleHttpRequest(ns, reader, headers, method, uriPart, httpClient, clientEndpoint, loggerFactory, exclusionMatcher, blocklistMatcher);
+                await HttpRequestHandler.HandleHttpRequest(ns, reader, headers, method, uriPart, proxyHttpClient, directHttpClient, clientEndpoint, loggerFactory, exclusionMatcher, blocklistMatcher);
             }
             catch (Exception ex)
             {

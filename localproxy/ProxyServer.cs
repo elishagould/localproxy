@@ -10,7 +10,8 @@ namespace localproxy;
 
 public class ProxyServer
 {
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _proxyHttpClient;
+    private readonly HttpClient _directHttpClient;
     private readonly SspiCredentialCache _credentialCache;
     private readonly AuthenticatedConnectionPool _connectionPool;
     private readonly TcpListener _listener;
@@ -58,14 +59,25 @@ public class ProxyServer
             _logger.LogInformation("Upstream proxy is disabled or not configured - direct connections will be used");
         }
 
-        var handler = new HttpClientHandler
+        var proxyHandler = new HttpClientHandler
         {
             Proxy = sysProxy,
             UseProxy = sysProxy != null,
-            UseDefaultCredentials = true
+            UseDefaultCredentials = true,
+            AllowAutoRedirect = false,
+            UseCookies = false
         };
 
-        _httpClient = new HttpClient(handler, disposeHandler: true);
+        var directHandler = new HttpClientHandler
+        {
+            UseProxy = false,
+            UseDefaultCredentials = true,
+            AllowAutoRedirect = false,
+            UseCookies = false
+        };
+
+        _proxyHttpClient = new HttpClient(proxyHandler, disposeHandler: true);
+        _directHttpClient = new HttpClient(directHandler, disposeHandler: true);
         _credentialCache = new SspiCredentialCache(_loggerFactory.CreateLogger<SspiCredentialCache>());
         _connectionPool = new AuthenticatedConnectionPool(_loggerFactory.CreateLogger<AuthenticatedConnectionPool>());
         _listener = new TcpListener(IPAddress.Any, _config.Proxy.Port);
@@ -83,7 +95,7 @@ public class ProxyServer
             while (!_cts.Token.IsCancellationRequested)
             {
                 var client = await _listener.AcceptTcpClientAsync(_cts.Token);
-                _ = ClientHandler.HandleClientAsync(client, _httpClient, _credentialCache, _connectionPool, _config, _loggerFactory, _exclusionMatcher, _blocklistMatcher);
+                _ = ClientHandler.HandleClientAsync(client, _proxyHttpClient, _directHttpClient, _credentialCache, _connectionPool, _config, _loggerFactory, _exclusionMatcher, _blocklistMatcher);
             }
         }
         catch (OperationCanceledException)
@@ -102,7 +114,8 @@ public class ProxyServer
         _logger.LogInformation("Stopping proxy server");
         _cts?.Cancel();
         _listener.Stop();
-        _httpClient.Dispose();
+        _proxyHttpClient.Dispose();
+        _directHttpClient.Dispose();
         _logger.LogInformation("Proxy server stopped");
     }
 

@@ -11,7 +11,7 @@ namespace localproxy;
 
 public static class HttpRequestHandler
 {
-    public static async Task HandleHttpRequest(System.Net.Sockets.NetworkStream ns, StreamReader reader, WebHeaderCollection headers, string method, string uriPart, HttpClient httpClient, string clientEndpoint, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
+    public static async Task HandleHttpRequest(System.Net.Sockets.NetworkStream ns, StreamReader reader, WebHeaderCollection headers, string method, string uriPart, HttpClient proxyHttpClient, HttpClient directHttpClient, string clientEndpoint, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
     {
         var logger = loggerFactory.CreateLogger(typeof(HttpRequestHandler));
         
@@ -50,6 +50,9 @@ public static class HttpRequestHandler
 
         logger.LogTrace("Forwarding {Method} to {Host}{PathAndQuery}", method, requestUri.Host, requestUri.PathAndQuery);
 
+        var selectedHttpClient = shouldBypass ? directHttpClient : proxyHttpClient;
+        var sendStart = DateTime.UtcNow;
+
         using var requestMessage = new HttpRequestMessage(new HttpMethod(method), requestUri);
 
         foreach (var key in headers.AllKeys)
@@ -74,19 +77,37 @@ public static class HttpRequestHandler
         if (int.TryParse(headers["Content-Length"], out var contentLength) && contentLength > 0)
         {
             logger.LogDebug("Reading request body: {ContentLength} bytes", contentLength);
-            var buffer = new char[contentLength];
-            var read = 0;
-            while (read < contentLength)
+            var bodyBytes = new byte[contentLength];
+            var totalRead = 0;
+
+            while (totalRead < contentLength)
             {
-                var r = await reader.ReadAsync(buffer, read, contentLength - read);
-                if (r == 0) break;
-                read += r;
+                var read = await reader.BaseStream.ReadAsync(bodyBytes, totalRead, contentLength - totalRead);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                totalRead += read;
             }
-            var bodyBytes = Encoding.ASCII.GetBytes(buffer, 0, read);
+
+            if (totalRead != contentLength)
+            {
+                Array.Resize(ref bodyBytes, totalRead);
+            }
+
             requestMessage.Content = new ByteArrayContent(bodyBytes);
         }
 
-        using var response = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await selectedHttpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+
+        var elapsedMs = (DateTime.UtcNow - sendStart).TotalMilliseconds;
+        logger.LogTrace("HTTP upstream {Method} {Uri} -> {StatusCode} in {ElapsedMs}ms via {Route}",
+            method,
+            requestUri,
+            (int)response.StatusCode,
+            elapsedMs,
+            shouldBypass ? "direct" : "proxy");
 
         logger.LogTrace("Response: {StatusCode} {ReasonPhrase}", (int)response.StatusCode, response.ReasonPhrase);
 
