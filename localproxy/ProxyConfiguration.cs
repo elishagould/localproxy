@@ -11,6 +11,7 @@ public class ProxySettings
 {
     public int Port { get; set; } = 3128;
     public int BufferSize { get; set; } = 8192;
+    public List<ListenerSettings> Listeners { get; set; } = new();
 
     // Default/base configuration
     public ProxyProfile DefaultProfile { get; set; } = new ProxyProfile
@@ -40,8 +41,26 @@ public class ProxySettings
 
     public string ActiveProfileName { get; set; } = "Default";
 
+    public IReadOnlyList<ListenerSettings> EffectiveListeners =>
+        Listeners.Count > 0
+            ? Listeners
+            : new List<ListenerSettings>
+            {
+                new()
+                {
+                    Bind = "any",
+                    Port = Port
+                }
+            };
+
     // Helper to get the active profile
     public ProxyProfile ActiveProfile => Profiles.FirstOrDefault(p => p.Name == ActiveProfileName) ?? DefaultProfile;
+}
+
+public class ListenerSettings
+{
+    public string Bind { get; set; } = "any";
+    public int Port { get; set; } = 3128;
 }
 
 public class ProxyProfile

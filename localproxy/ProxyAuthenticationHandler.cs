@@ -81,7 +81,7 @@ public static class ProxyAuthenticationHandler
             }
             else
             {
-                logger.LogWarning("Unexpected proxy response");
+                logger.LogWarning("Unexpected proxy response: {ResponseLine}", responseLine);
                 await HttpResponseWriter.WriteBadRequest(clientStream);
             }
         }

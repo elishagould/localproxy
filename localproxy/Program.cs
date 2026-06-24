@@ -53,33 +53,32 @@ try
         Log.Information("Running in system tray mode");
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        
-        var host = CreateHostBuilder(args, config).Build();
-        
+
+        var host = CreateHostBuilder(args, config, configuration).Build();
+
         using var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<SystemTrayIcon>();
+        var trayRunner = new TrayProxyRunner(config, configuration, loggerFactory, loggerFactory.CreateLogger<TrayProxyRunner>());
 
-        // Create ProxyServer instance for tray mode
-        var proxyServer = new ProxyServer(config, loggerFactory);
-        _ = proxyServer.StartAsync();
+        await trayRunner.StartAsync();
 
         // Show balloon tip
-        using var trayIcon = new SystemTrayIcon(config, proxyServer, loggerFactory, logger, () => 
+        using var trayIcon = new SystemTrayIcon(config, trayRunner, loggerFactory, logger, () =>
         {
-            proxyServer.Stop();
+            trayRunner.Stop();
             Application.Exit();
         });
-        
+
         Application.Run();
-        
+
         // Cleanup
-        proxyServer.Stop();
+        trayRunner.Stop();
         await host.StopAsync(TimeSpan.FromSeconds(5));
         host.Dispose();
     }
     else
     {
-        var host = CreateHostBuilder(args, config).Build();
+        var host = CreateHostBuilder(args, config, configuration).Build();
         
         var logger = host.Services.GetRequiredService<ILogger<Program>>();
         
@@ -108,7 +107,7 @@ finally
 
 return 0;
 
-static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config)
+static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config, IConfigurationRoot configuration)
 {
     var builder = Host.CreateDefaultBuilder(args);
 
@@ -123,6 +122,7 @@ static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config)
     builder.ConfigureServices((context, services) =>
     {
         services.AddSingleton(config);
+        services.AddSingleton(configuration);
     });
 
     // Configure Windows Service support

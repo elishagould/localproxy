@@ -166,18 +166,30 @@ Edit `appsettings.json` to customize the proxy settings:
 ```json
 {
   "Proxy": {
-    "Port": 3128,                    // Port to listen on
-    "EnableUpstreamProxy": true,     // Use system proxy settings
+    "Port": 3128,                    // Legacy fallback port (used when Listeners is empty)
     "BufferSize": 8192,              // Stream buffer size in bytes
-    "NoProxy": [                     // Proxy exclusion list (NO_PROXY format)
-      "localhost",                   // Exact hostname
-      "127.0.0.1",                   // IP address
-      "*.local",                     // Wildcard domain
-      ".internal.com",               // Domain suffix
-      "192.168.*",                   // IP wildcard
-      "10.*",                        // Class A network
-      "example.com:8080"             // Port-specific
-    ]
+    "Listeners": [                   // One or more listener endpoints
+      {
+        "Bind": "localhost",        // localhost | any | IP address | network interface name
+        "Port": 3128
+      },
+      {
+        "Bind": "192.168.1.10",
+        "Port": 3130
+      }
+    ],
+    "DefaultProfile": {
+      "EnableUpstreamProxy": true,   // Use system proxy settings
+      "NoProxy": [                   // Proxy exclusion list (NO_PROXY format)
+        "localhost",                 // Exact hostname
+        "127.0.0.1",                 // IP address
+        "*.local",                   // Wildcard domain
+        ".internal.com",             // Domain suffix
+        "192.168.*",                 // IP wildcard
+        "10.*",                      // Class A network
+        "example.com:8080"           // Port-specific
+      ]
+    }
   },
   "Logging": {
     "LogLevel": {
@@ -203,6 +215,17 @@ Edit `appsettings.json` to customize the proxy settings:
 ```
 
 **Note:** When running in system tray mode, right-click the icon and select "Open Configuration" to edit settings directly.
+
+### Listener Binding
+
+Configure one or more listeners in `Proxy:Listeners`:
+
+- `Bind: "localhost"` binds only to loopback (`127.0.0.1`)
+- `Bind: "any"` binds to all interfaces (`0.0.0.0`)
+- `Bind: "<ip-address>"` binds to a specific local IP
+- `Bind: "<interface-name>"` binds to the first IPv4 unicast address on the named interface
+
+If `Listeners` is not provided, the proxy falls back to `Port` with `Bind = "any"` for backward compatibility.
 
 ### Proxy Exclusion List (NoProxy)
 

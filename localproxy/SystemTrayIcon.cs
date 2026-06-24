@@ -10,29 +10,31 @@ public class SystemTrayIcon : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly ILogger<SystemTrayIcon> _logger;
     private readonly Action _onExit;
-    private ProxyServer _proxyServer;
+    private readonly TrayProxyRunner _trayRunner;
     private readonly ProxyConfiguration _config;
     private readonly ILoggerFactory _loggerFactory;
 
-    public SystemTrayIcon(ProxyConfiguration config, ProxyServer proxyServer, ILoggerFactory loggerFactory, ILogger<SystemTrayIcon> logger, Action onExit)
+    public SystemTrayIcon(ProxyConfiguration config, TrayProxyRunner trayRunner, ILoggerFactory loggerFactory, ILogger<SystemTrayIcon> logger, Action onExit)
     {
         _config = config;
-        _proxyServer = proxyServer;
+        _trayRunner = trayRunner;
         _loggerFactory = loggerFactory;
         _logger = logger;
         _onExit = onExit;
 
+        var listenerSummary = GetListenerSummary(config);
+
         _notifyIcon = new NotifyIcon
         {
             Icon = CreateIcon(),
-            Text = $"Simple Proxy - Port {config.Proxy.Port}",
+            Text = $"Simple Proxy - {listenerSummary}",
             Visible = true
         };
 
         var contextMenu = new ContextMenuStrip();
         
         // Status item (non-clickable)
-        var statusItem = new ToolStripMenuItem($"Proxy running on port {config.Proxy.Port}")
+        var statusItem = new ToolStripMenuItem($"Proxy listeners: {listenerSummary}")
         {
             Enabled = false
         };
@@ -48,14 +50,12 @@ public class SystemTrayIcon : IDisposable
             {
                 Checked = profile.Name == config.Proxy.ActiveProfileName
             };
-            item.Click += async (s, e) => {
+            item.Click += (s, e) => {
                 config.Proxy.ActiveProfileName = profile.Name;
                 foreach (ToolStripMenuItem mi in profileMenu.DropDownItems)
                     mi.Checked = false;
                 item.Checked = true;
-                _proxyServer.Stop();
-                _proxyServer = new ProxyServer(_config, _loggerFactory);
-                await _proxyServer.StartAsync();
+                _trayRunner.Reload();
                 ShowBalloonTip("Profile Changed", $"Active profile set to: {profile.Name}", ToolTipIcon.Info);
             };
             profileMenu.DropDownItems.Add(item);
@@ -153,6 +153,21 @@ public class SystemTrayIcon : IDisposable
     public void ShowBalloonTip(string title, string text, ToolTipIcon icon = ToolTipIcon.Info)
     {
         _notifyIcon.ShowBalloonTip(3000, title, text, icon);
+    }
+
+    private static string GetListenerSummary(ProxyConfiguration config)
+    {
+        var listeners = config.Proxy.EffectiveListeners;
+        if (listeners.Count == 0)
+        {
+            return "No listeners";
+        }
+
+        var entries = listeners
+            .Select(l => $"{l.Bind}:{l.Port}")
+            .ToArray();
+
+        return string.Join(", ", entries);
     }
 
     private static Icon CreateIcon()
