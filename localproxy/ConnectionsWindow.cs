@@ -65,21 +65,47 @@ public sealed class ConnectionsWindow : Form
         var retention = TimeSpan.FromSeconds(Math.Max(0, _config.ConnectionMonitor.InactiveConnectionRetentionSeconds));
         var sessions = _connectionTracker.GetSnapshot(retention);
 
-        _grid.Rows.Clear();
-
-        foreach (var s in sessions)
+        var existingRows = new Dictionary<Guid, DataGridViewRow>();
+        foreach (DataGridViewRow row in _grid.Rows)
         {
-            _grid.Rows.Add(
-                s.IsActive ? "Active" : "Inactive",
-                s.Protocol.ToString(),
-                s.Source,
-                s.Destination,
-                FormatBytes(s.BytesClientToTarget),
-                FormatBytes(s.BytesTargetToClient),
-                FormatBytes(s.TotalBytes),
-                s.ConnectedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
-                s.DisconnectedAtUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty);
+            if (row.Tag is Guid sessionId)
+            {
+                existingRows[sessionId] = row;
+            }
         }
+
+        foreach (var session in sessions)
+        {
+            if (existingRows.TryGetValue(session.SessionId, out var existingRow))
+            {
+                UpdateRow(existingRow, session);
+                existingRows.Remove(session.SessionId);
+                continue;
+            }
+
+            var rowIndex = _grid.Rows.Add();
+            var row = _grid.Rows[rowIndex];
+            row.Tag = session.SessionId;
+            UpdateRow(row, session);
+        }
+
+        foreach (var staleRow in existingRows.Values.ToList())
+        {
+            _grid.Rows.Remove(staleRow);
+        }
+    }
+
+    private void UpdateRow(DataGridViewRow row, ConnectionSessionSnapshot session)
+    {
+        row.Cells["State"].Value = session.IsActive ? "Active" : "Inactive";
+        row.Cells["Protocol"].Value = session.Protocol.ToString();
+        row.Cells["Source"].Value = session.Source;
+        row.Cells["Destination"].Value = session.Destination;
+        row.Cells["BytesUp"].Value = FormatBytes(session.BytesClientToTarget);
+        row.Cells["BytesDown"].Value = FormatBytes(session.BytesTargetToClient);
+        row.Cells["BytesTotal"].Value = FormatBytes(session.TotalBytes);
+        row.Cells["ConnectedAt"].Value = session.ConnectedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        row.Cells["DisconnectedAt"].Value = session.DisconnectedAtUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? string.Empty;
     }
 
     private static string FormatBytes(long? bytes)
