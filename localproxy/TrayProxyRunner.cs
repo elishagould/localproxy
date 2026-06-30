@@ -9,6 +9,7 @@ public sealed class TrayProxyRunner : IDisposable
     private readonly ProxyConfiguration _config;
     private readonly IConfigurationRoot _configuration;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ConnectionTracker _connectionTracker;
     private readonly ILogger<TrayProxyRunner> _logger;
     private readonly object _syncLock = new();
 
@@ -23,11 +24,13 @@ public sealed class TrayProxyRunner : IDisposable
         ProxyConfiguration config,
         IConfigurationRoot configuration,
         ILoggerFactory loggerFactory,
+        ConnectionTracker connectionTracker,
         ILogger<TrayProxyRunner> logger)
     {
         _config = config;
         _configuration = configuration;
         _loggerFactory = loggerFactory;
+        _connectionTracker = connectionTracker;
         _logger = logger;
     }
 
@@ -113,6 +116,7 @@ public sealed class TrayProxyRunner : IDisposable
         _config.Proxy = reloadedConfig.Proxy;
         _config.Logging = reloadedConfig.Logging;
         _config.Authentication = reloadedConfig.Authentication;
+        _config.ConnectionMonitor = reloadedConfig.ConnectionMonitor;
     }
 
     private void StartServer()
@@ -126,7 +130,7 @@ public sealed class TrayProxyRunner : IDisposable
 
             _serverCts?.Dispose();
             _serverCts = new CancellationTokenSource();
-            _proxyServer = new ProxyServer(_config, _loggerFactory);
+            _proxyServer = new ProxyServer(_config, _loggerFactory, _connectionTracker);
             _serverTask = RunServerAsync(_proxyServer, _serverCts.Token);
         }
     }

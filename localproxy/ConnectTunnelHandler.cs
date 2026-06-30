@@ -11,7 +11,7 @@ namespace localproxy;
 
 public static class ConnectTunnelHandler
 {
-    public static async Task HandleConnectTunnel(NetworkStream clientStream, string hostPort, HttpClient httpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
+    public static async Task HandleConnectTunnel(NetworkStream clientStream, string hostPort, HttpClient httpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher, ConnectionTracker connectionTracker, ConnectionSessionHandle session)
     {
         var logger = loggerFactory.CreateLogger(typeof(ConnectTunnelHandler));
 
@@ -23,6 +23,8 @@ public static class ConnectTunnelHandler
                 await HttpResponseWriter.WriteBadRequest(clientStream);
                 return;
             }
+
+            connectionTracker.SetDestination(session, $"{host}:{port}");
 
             if (blocklistMatcher.ShouldBypassProxy(host, port))
             {
@@ -40,7 +42,7 @@ public static class ConnectTunnelHandler
             if (shouldBypass)
             {
                 logger.LogTrace("Host {Host}:{Port} matches exclusion list - using direct connection", host, port);
-                await HandleDirectConnection(clientStream, host, port, config, logger);
+                await HandleDirectConnection(clientStream, host, port, config, logger, connectionTracker, session);
             }
             else if (useUpstreamProxy)
             {
@@ -49,7 +51,7 @@ public static class ConnectTunnelHandler
 
                 if (IsSocksProxy(upstreamProxy))
                 {
-                    await HandleSocksProxyConnection(clientStream, host, port, upstreamProxy, config, logger);
+                    await HandleSocksProxyConnection(clientStream, host, port, upstreamProxy, config, logger, connectionTracker, session);
                 }
                 else
                 {
@@ -59,7 +61,7 @@ public static class ConnectTunnelHandler
             }
             else
             {
-                await HandleDirectConnection(clientStream, host, port, config, logger);
+                await HandleDirectConnection(clientStream, host, port, config, logger, connectionTracker, session);
             }
         }
         catch (Exception ex)
@@ -104,7 +106,7 @@ public static class ConnectTunnelHandler
         return proxyUri.Scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task HandleSocksProxyConnection(NetworkStream clientStream, string host, int port, Uri proxyUri, ProxyConfiguration config, ILogger logger)
+    private static async Task HandleSocksProxyConnection(NetworkStream clientStream, string host, int port, Uri proxyUri, ProxyConfiguration config, ILogger logger, ConnectionTracker connectionTracker, ConnectionSessionHandle session)
     {
         try
         {
@@ -128,8 +130,8 @@ public static class ConnectTunnelHandler
 
             logger.LogTrace("Tunnel established to {Host}:{Port} via SOCKS proxy {ProxyHost}:{ProxyPort}", host, port, proxyUri.Host, proxyUri.Port);
 
-            var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, proxyStream, proxyClient, config.Proxy.BufferSize);
-            var targetToClient = StreamCopier.CopyStreamAsync(proxyStream, clientStream, proxyClient, config.Proxy.BufferSize);
+            var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, proxyStream, proxyClient, config.Proxy.BufferSize, bytes => connectionTracker.AddClientToTargetBytes(session, bytes));
+            var targetToClient = StreamCopier.CopyStreamAsync(proxyStream, clientStream, proxyClient, config.Proxy.BufferSize, bytes => connectionTracker.AddTargetToClientBytes(session, bytes));
 
             await Task.WhenAny(clientToTarget, targetToClient);
 
@@ -266,7 +268,7 @@ public static class ConnectTunnelHandler
         }
     }
 
-    private static async Task HandleDirectConnection(NetworkStream clientStream, string host, int port, ProxyConfiguration config, ILogger logger)
+    private static async Task HandleDirectConnection(NetworkStream clientStream, string host, int port, ProxyConfiguration config, ILogger logger, ConnectionTracker connectionTracker, ConnectionSessionHandle session)
     {
         try
         {
@@ -282,8 +284,8 @@ public static class ConnectTunnelHandler
 
             logger.LogTrace("Tunnel established to {Host}:{Port} (direct)", host, port);
 
-            var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, targetStream, targetClient, config.Proxy.BufferSize);
-            var targetToClient = StreamCopier.CopyStreamAsync(targetStream, clientStream, targetClient, config.Proxy.BufferSize);
+            var clientToTarget = StreamCopier.CopyStreamAsync(clientStream, targetStream, targetClient, config.Proxy.BufferSize, bytes => connectionTracker.AddClientToTargetBytes(session, bytes));
+            var targetToClient = StreamCopier.CopyStreamAsync(targetStream, clientStream, targetClient, config.Proxy.BufferSize, bytes => connectionTracker.AddTargetToClientBytes(session, bytes));
 
             await Task.WhenAny(clientToTarget, targetToClient);
 

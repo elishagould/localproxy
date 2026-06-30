@@ -12,12 +12,15 @@ public class SystemTrayIcon : IDisposable
     private readonly Action _onExit;
     private readonly TrayProxyRunner _trayRunner;
     private readonly ProxyConfiguration _config;
+    private readonly ConnectionTracker _connectionTracker;
     private readonly ILoggerFactory _loggerFactory;
+    private ConnectionsWindow? _connectionsWindow;
 
-    public SystemTrayIcon(ProxyConfiguration config, TrayProxyRunner trayRunner, ILoggerFactory loggerFactory, ILogger<SystemTrayIcon> logger, Action onExit)
+    public SystemTrayIcon(ProxyConfiguration config, TrayProxyRunner trayRunner, ConnectionTracker connectionTracker, ILoggerFactory loggerFactory, ILogger<SystemTrayIcon> logger, Action onExit)
     {
         _config = config;
         _trayRunner = trayRunner;
+        _connectionTracker = connectionTracker;
         _loggerFactory = loggerFactory;
         _logger = logger;
         _onExit = onExit;
@@ -63,6 +66,14 @@ public class SystemTrayIcon : IDisposable
         contextMenu.Items.Add(profileMenu);
         contextMenu.Items.Add(new ToolStripSeparator());
 
+        // Show Connections
+        var showConnectionsItem = new ToolStripMenuItem("Show Connections")
+        {
+            Image = null
+        };
+        showConnectionsItem.Click += ShowConnections_Click;
+        contextMenu.Items.Add(showConnectionsItem);
+
         // Show Logs
         var showLogsItem = new ToolStripMenuItem("Show Logs")
         {
@@ -70,7 +81,7 @@ public class SystemTrayIcon : IDisposable
         };
         showLogsItem.Click += ShowLogs_Click;
         contextMenu.Items.Add(showLogsItem);
-        
+
         // Open Configuration
         var openConfigItem = new ToolStripMenuItem("Open Configuration")
         {
@@ -100,6 +111,20 @@ public class SystemTrayIcon : IDisposable
     private void NotifyIcon_DoubleClick(object? sender, EventArgs e)
     {
         ShowBalloonTip("Proxy Status", $"Proxy is running and accepting connections", ToolTipIcon.Info);
+    }
+
+    private void ShowConnections_Click(object? sender, EventArgs e)
+    {
+        if (_connectionsWindow is { IsDisposed: false })
+        {
+            _connectionsWindow.BringToFront();
+            _connectionsWindow.Activate();
+            return;
+        }
+
+        _connectionsWindow = new ConnectionsWindow(_connectionTracker, _config);
+        _connectionsWindow.FormClosed += (_, _) => _connectionsWindow = null;
+        _connectionsWindow.Show();
     }
 
     private void ShowLogs_Click(object? sender, EventArgs e)
@@ -197,6 +222,13 @@ public class SystemTrayIcon : IDisposable
 
     public void Dispose()
     {
+        if (_connectionsWindow is { IsDisposed: false })
+        {
+            _connectionsWindow.Close();
+            _connectionsWindow.Dispose();
+            _connectionsWindow = null;
+        }
+
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _logger.LogInformation("System tray icon disposed");

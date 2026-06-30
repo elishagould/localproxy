@@ -5,6 +5,7 @@ public class ProxyConfiguration
     public ProxySettings Proxy { get; set; } = new();
     public LoggingSettings Logging { get; set; } = new();
     public AuthenticationSettings Authentication { get; set; } = new();
+    public ConnectionMonitorSettings ConnectionMonitor { get; set; } = new();
 }
 
 public class ProxySettings
@@ -95,4 +96,10 @@ public class AuthenticationSettings
 {
     public bool EnableCaching { get; set; } = true;
     public int TimeoutSeconds { get; set; } = 30;
+}
+
+public class ConnectionMonitorSettings
+{
+    public int InactiveConnectionRetentionSeconds { get; set; } = 300;
+    public int ListenerRetryIntervalSeconds { get; set; } = 30;
 }

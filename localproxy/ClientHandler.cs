@@ -14,10 +14,11 @@ public static class ClientHandler
 {
     private const int MaxHeaderBytes = 64 * 1024;
 
-    public static async Task HandleClientAsync(TcpClient client, HttpClient proxyHttpClient, HttpClient directHttpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher)
+    public static async Task HandleClientAsync(TcpClient client, HttpClient proxyHttpClient, HttpClient directHttpClient, SspiCredentialCache credentialCache, AuthenticatedConnectionPool connectionPool, ProxyConfiguration config, ILoggerFactory loggerFactory, ProxyExclusionMatcher exclusionMatcher, ProxyExclusionMatcher blocklistMatcher, ConnectionTracker connectionTracker)
     {
         var logger = loggerFactory.CreateLogger(typeof(ClientHandler));
         var clientEndpoint = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
+        ConnectionSessionHandle? session = null;
 
         using (client)
         {
@@ -34,7 +35,8 @@ public static class ClientHandler
 
                 if (bufferedBytes[0] == 0x05)
                 {
-                    await HandleSocks5ClientAsync(ns, bufferedBytes, config, blocklistMatcher, logger);
+                    session = connectionTracker.RegisterSession(clientEndpoint, ConnectionProtocol.Socks5);
+                    await HandleSocks5ClientAsync(ns, bufferedBytes, config, blocklistMatcher, logger, connectionTracker, session);
                     return;
                 }
 
@@ -65,15 +67,19 @@ public static class ClientHandler
 
                 if (string.Equals(method, "CONNECT", StringComparison.OrdinalIgnoreCase))
                 {
+                    session = connectionTracker.RegisterSession(clientEndpoint, ConnectionProtocol.ConnectTunnel);
+                    connectionTracker.SetDestination(session, uriPart);
                     logger.LogTrace("CONNECT tunnel to {Target}", uriPart);
-                    await ConnectTunnelHandler.HandleConnectTunnel(ns, uriPart, proxyHttpClient, credentialCache, connectionPool, config, loggerFactory, exclusionMatcher, blocklistMatcher);
+                    await ConnectTunnelHandler.HandleConnectTunnel(ns, uriPart, proxyHttpClient, credentialCache, connectionPool, config, loggerFactory, exclusionMatcher, blocklistMatcher, connectionTracker, session);
                     return;
                 }
+
+                session = connectionTracker.RegisterSession(clientEndpoint, ConnectionProtocol.Http);
 
                 using var prefixedStream = new PrefixedStream(ns, bufferedBody);
                 using var reader = new StreamReader(prefixedStream, Encoding.ASCII, leaveOpen: true);
 
-                await HttpRequestHandler.HandleHttpRequest(ns, reader, headers, method, uriPart, proxyHttpClient, directHttpClient, clientEndpoint, loggerFactory, exclusionMatcher, blocklistMatcher);
+                await HttpRequestHandler.HandleHttpRequest(ns, reader, headers, method, uriPart, proxyHttpClient, directHttpClient, clientEndpoint, loggerFactory, exclusionMatcher, blocklistMatcher, connectionTracker, session);
             }
             catch (Exception ex)
             {
@@ -86,10 +92,17 @@ public static class ClientHandler
                 }
                 catch { }
             }
+            finally
+            {
+                if (session is not null)
+                {
+                    connectionTracker.MarkDisconnected(session);
+                }
+            }
         }
     }
 
-    private static async Task HandleSocks5ClientAsync(NetworkStream ns, List<byte> bufferedBytes, ProxyConfiguration config, ProxyExclusionMatcher blocklistMatcher, ILogger logger)
+    private static async Task HandleSocks5ClientAsync(NetworkStream ns, List<byte> bufferedBytes, ProxyConfiguration config, ProxyExclusionMatcher blocklistMatcher, ILogger logger, ConnectionTracker connectionTracker, ConnectionSessionHandle session)
     {
         try
         {
@@ -164,6 +177,8 @@ public static class ClientHandler
             var port = (bufferedBytes[offset] << 8) | bufferedBytes[offset + 1];
             offset += 2;
 
+            connectionTracker.SetDestination(session, $"{host}:{port}");
+
             if (blocklistMatcher.ShouldBypassProxy(host, port))
             {
                 logger.LogWarning("Host {Host}:{Port} is blocked by configuration", host, port);
@@ -187,8 +202,8 @@ public static class ClientHandler
                 await targetStream.FlushAsync();
             }
 
-            var clientToTarget = StreamCopier.CopyStreamAsync(ns, targetStream, targetClient, config.Proxy.BufferSize);
-            var targetToClient = StreamCopier.CopyStreamAsync(targetStream, ns, targetClient, config.Proxy.BufferSize);
+            var clientToTarget = StreamCopier.CopyStreamAsync(ns, targetStream, targetClient, config.Proxy.BufferSize, bytes => connectionTracker.AddClientToTargetBytes(session, bytes));
+            var targetToClient = StreamCopier.CopyStreamAsync(targetStream, ns, targetClient, config.Proxy.BufferSize, bytes => connectionTracker.AddTargetToClientBytes(session, bytes));
 
             await Task.WhenAny(clientToTarget, targetToClient);
         }

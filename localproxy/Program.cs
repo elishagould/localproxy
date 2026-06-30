@@ -17,6 +17,7 @@ var configuration = new ConfigurationBuilder()
 
 var config = new ProxyConfiguration();
 configuration.Bind(config);
+var connectionTracker = new ConnectionTracker();
 
 // Configure Serilog
 var loggerConfig = new LoggerConfiguration()
@@ -54,16 +55,16 @@ try
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        var host = CreateHostBuilder(args, config, configuration).Build();
+        var host = CreateHostBuilder(args, config, configuration, connectionTracker).Build();
 
         using var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
         var logger = loggerFactory.CreateLogger<SystemTrayIcon>();
-        var trayRunner = new TrayProxyRunner(config, configuration, loggerFactory, loggerFactory.CreateLogger<TrayProxyRunner>());
+        var trayRunner = new TrayProxyRunner(config, configuration, loggerFactory, connectionTracker, loggerFactory.CreateLogger<TrayProxyRunner>());
 
         await trayRunner.StartAsync();
 
         // Show balloon tip
-        using var trayIcon = new SystemTrayIcon(config, trayRunner, loggerFactory, logger, () =>
+        using var trayIcon = new SystemTrayIcon(config, trayRunner, connectionTracker, loggerFactory, logger, () =>
         {
             trayRunner.Stop();
             Application.Exit();
@@ -78,8 +79,8 @@ try
     }
     else
     {
-        var host = CreateHostBuilder(args, config, configuration).Build();
-        
+        var host = CreateHostBuilder(args, config, configuration, connectionTracker).Build();
+
         var logger = host.Services.GetRequiredService<ILogger<Program>>();
         
         if (runAsService)
@@ -107,7 +108,7 @@ finally
 
 return 0;
 
-static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config, IConfigurationRoot configuration)
+static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config, IConfigurationRoot configuration, ConnectionTracker connectionTracker)
 {
     var builder = Host.CreateDefaultBuilder(args);
 
@@ -123,6 +124,7 @@ static IHostBuilder CreateHostBuilder(string[] args, ProxyConfiguration config, 
     {
         services.AddSingleton(config);
         services.AddSingleton(configuration);
+        services.AddSingleton(connectionTracker);
     });
 
     // Configure Windows Service support

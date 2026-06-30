@@ -7,7 +7,7 @@ namespace localproxy;
 
 public static class StreamCopier
 {
-    public static async Task CopyStreamAsync(Stream source, Stream destination, TcpClient client, int bufferSize = 8192)
+    public static async Task CopyStreamAsync(Stream source, Stream destination, TcpClient client, int bufferSize = 8192, Action<int>? onBytesCopied = null)
     {
         try
         {
@@ -17,6 +17,7 @@ public static class StreamCopier
             {
                 await destination.WriteAsync(buffer, 0, bytesRead);
                 await destination.FlushAsync();
+                onBytesCopied?.Invoke(bytesRead);
             }
         }
         catch

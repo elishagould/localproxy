@@ -11,17 +11,19 @@ public class ProxyServiceWorker : BackgroundService
     private readonly IConfigurationRoot _configuration;
     private readonly ILogger<ProxyServiceWorker> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ConnectionTracker _connectionTracker;
     private readonly object _syncLock = new();
     private ProxyServer? _proxyServer;
     private CancellationTokenSource? _serverCts;
     private IDisposable? _reloadRegistration;
     private bool _reloadRequested;
 
-    public ProxyServiceWorker(ProxyConfiguration config, IConfigurationRoot configuration, ILoggerFactory loggerFactory, ILogger<ProxyServiceWorker> logger)
+    public ProxyServiceWorker(ProxyConfiguration config, IConfigurationRoot configuration, ILoggerFactory loggerFactory, ConnectionTracker connectionTracker, ILogger<ProxyServiceWorker> logger)
     {
         _config = config;
         _configuration = configuration;
         _loggerFactory = loggerFactory;
+        _connectionTracker = connectionTracker;
         _logger = logger;
     }
 
@@ -42,7 +44,7 @@ public class ProxyServiceWorker : BackgroundService
                 lock (_syncLock)
                 {
                     _serverCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    _proxyServer = new ProxyServer(_config, _loggerFactory);
+                    _proxyServer = new ProxyServer(_config, _loggerFactory, _connectionTracker);
                 }
 
                 try
@@ -109,6 +111,7 @@ public class ProxyServiceWorker : BackgroundService
         _config.Proxy = reloadedConfig.Proxy;
         _config.Logging = reloadedConfig.Logging;
         _config.Authentication = reloadedConfig.Authentication;
+        _config.ConnectionMonitor = reloadedConfig.ConnectionMonitor;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
